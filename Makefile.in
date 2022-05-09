@@ -1,0 +1,101 @@
+VERSION=3.7
+#	@(#)Makefile	8.1 (Berkeley) 6/18/93
+
+# Things that can be turned off to save space:
+#	LISPCODE (-l flag, showmatch and lisp options)
+#	UCVISUAL (visual \ nonsense on upper case only terminals)
+#	CHDIR (the undocumented chdir command)
+#	CRYPT includes code to edit encrypted files (the -x option, like ed.)
+#	VMUNIX makes ex considerably larger, raising many limits and
+#		improving speed and simplicity of maintenance.
+#
+# If your system expands tabs to 4 spaces you should -DTABS=4 below.
+#
+PREFIX=	${DESTDIR}/usr/local
+BINDIR=	${PREFIX}/bin
+LIBEXECDIR=${PREFIX}/libexec
+MANDIR=	${PREFIX}/share/man
+SHAREDIR=${PREFIX}/share/ex/${VERSION}_4.4BSD
+#
+# Either none or both of the next two lines needs to be uncommented
+# WARNING: After changing the following line ex_vars has to be rebuild!
+#
+#D_SBRK=	-DUNIX_SBRK
+#MALLOC_C=mapmalloc.c
+#
+PROG=	ex
+SUBDIR=	ex3.7recover ex3.7preserve
+DEB=	-Wall -Wextra ${__CDBG} ${__SAN}
+_CFLAGS=${CFLAGS} ${DEFINES} ${DEB} -fcommon
+_CPPFLAGS=-DTABS=8 -DLISPCODE -DCHDIR -DUCVISUAL -DVMUNIX -DFASTTAG -DUSG3TTY \
+	${D_SBRK} -DLIBEXECDIR='"${LIBEXECDIR}"' -DBIT8
+_LDFLAGS=${LDFLAGS} ${__SAN} ${DEFINES} -s
+SRCS=	ex.c ex_addr.c ex_cmds.c ex_cmds2.c ex_cmdsub.c ex_data.c ex_extern.c \
+	ex_get.c ex_io.c ex_put.c ex_re.c ex_set.c ex_subr.c ex_tagio.c \
+	ex_temp.c ex_tty.c ex_unix.c ex_v.c ex_vadj.c ex_vget.c ex_vmain.c \
+	ex_voper.c ex_vops.c ex_vops2.c ex_vops3.c ex_vput.c ex_vwind.c \
+	printf.c ${MALLOC_C}
+OBJS=	${SRCS:.c=.o}
+
+# There's a boostrap problem here -- ex is necessary to build ex_vars.h.
+# The file ex_vars.h.init can be used to build a version of ex to start
+# with.
+
+all: ${PROG}
+	for i in ${SUBDIR}; do \
+		( cd $$i && ${MAKE} \
+		    _CFLAGS="${_CFLAGS}" \
+		    _LDFLAGS="${_LDFLAGS}" \
+		    ) || exit 1; \
+	done
+
+${PROG}: ${OBJS}
+	${CC} ${_CFLAGS} ${_LDFLAGS} -o $@ ${OBJS} ${LDADD}
+
+${OBJS}: #ex_vars.h
+
+install: ${BINDIR} ${LIBEXECDIR} ${MANDIR}/man1 ${SHAREDIR}
+	install ${PROG} ${BINDIR}/
+	for i in vi view edit; do \
+		ln -sf ${BINDIR}/${PROG} ${BINDIR}/$$i; \
+	done
+	for i in ex vi; do \
+		install -m 644 $$i.1 ${MANDIR}/man1/; \
+	done
+	ln -sf ${MANDIR}/man1/ex.1 ${MANDIR}/man1/edit.1
+	ln -sf ${MANDIR}/man1/vi.1 ${MANDIR}/man1/view.1
+	for i in ${SUBDIR}; do \
+		install $$i/$$i ${LIBEXECDIR}/; \
+	done
+	for i in edit vi ex; do \
+		[ -e ${SHAREDIR}/$$i ] || mkdir ${SHAREDIR}/$$i; \
+		install -m 644 USD.doc/$$i/*.pdf ${SHAREDIR}/$$i/; \
+	done
+
+uninstall:
+	for i in ${PROG} vi view edit; do \
+		rm -f ${BINDIR}/$$i; \
+		rm -f ${MANDIR}/man1/$$i.1; \
+	done
+	for i in ${SUBDIR}; do \
+		rm -f ${LIBEXECDIR}/$$i; \
+	done
+	rm -rf ${SHAREDIR}
+
+${BINDIR} ${LIBEXECDIR} ${MANDIR}/man1 ${SHAREDIR}:
+	mkdir -p $@
+
+clean:
+	for i in ${SUBDIR}; do \
+		( cd $$i && ${MAKE} $@ ) || exit 1; \
+	done
+	rm -f ${OBJS} ${PROG}
+
+distclean: clean
+	rm -f Makefile config.log
+
+ex_vars.h: ex_data.c Makefile.in
+	csh -f makeoptions ex_data.c ${CPP} ${_CPPFLAGS}
+
+.c.o:
+	${CC} ${_CFLAGS} ${_CPPFLAGS} -c $<
